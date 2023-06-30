@@ -1,0 +1,157 @@
+#!/bin/sh
+set -e
+
+Command="$0 $*"
+CommandDirname=`dirname $0`
+SourceDir=$(cd $CommandDirname && pwd)
+# Appends a CMake cache entry definition to the CMakeCacheEntries variable.
+#   $1: variable name
+#   $2: CMake type
+#   $3: value
+append_cache_entry() {
+  case "$3" in
+    *\ * )
+      # string contains whitespace
+      CMakeCacheEntries="$CMakeCacheEntries -D \"$1:$2=$3\""
+      ;;
+    *)
+      # string contains no whitespace
+      CMakeCacheEntries="$CMakeCacheEntries -D $1:$2=$3"
+      ;;
+  esac
+}
+
+# Appends a BOOL cache entry to the CMakeCacheEntries variable.
+#   $1: flag name
+#   $2: value (ON or OFF)
+set_build_flag() {
+  FlagName=''
+  case "$1" in
+    testing)                 FlagName='LIB_NET_ENABLE_TESTS' ;;
+    *)
+      echo "Invalid flag '$1'.  Try $0 --help to see available options."
+      exit 1
+      ;;
+  esac
+  append_cache_entry $FlagName BOOL $2
+}
+
+set_log_level() {
+  case "$1" in
+    trace)                   level='4' ;;
+    debug)                   level='3' ;;
+    warning)                 level='2' ;;
+    error)                   level='1' ;;
+    *)
+      echo "Invalid log level '$1'.  Try $0 --help to see available options."
+      exit 1
+      ;;
+  esac
+
+  append_cache_entry 'LIB_NET_LOG_LEVEL' STRING $level
+}
+
+# Set defaults.
+CMakeBuildDir=""
+CMakeCacheEntries=""
+
+# Parse user input.
+while [ $# -ne 0 ]; do
+  # Fetch the option argument.
+  case "$1" in
+    --*=*) optarg=`echo "$1" | sed 's/[-_a-zA-Z0-9]*=//'` ;;
+    --enable-*) optarg=`echo "$1" | sed 's/--enable-//'` ;;
+    --disable-*) optarg=`echo "$1" | sed 's/--disable-//'` ;;
+    *) ;;
+  esac
+  # Consume current input.
+  case "$1" in
+    --build-type=*)
+      append_cache_entry CMAKE_BUILD_TYPE STRING "$optarg"
+      ;;
+    --enable-*)
+      set_build_flag $optarg ON
+      ;;
+    --disable-*)
+      set_build_flag $optarg OFF
+      ;;
+    --openssl-root-dir=*)
+      append_cache_entry OPENSSL_ROOT_DIR PATH "$optarg"
+      ;;
+    --compiler=*)
+      append_cache_entry CMAKE_CXX_COMPILER STRING "$optarg"
+      ;;
+    --log-level=*)
+      set_log_level "$optarg"
+      ;;
+    *)
+      echo "Invalid option '$1'. Try $0 --help to see available options."
+      exit 1
+      ;;
+  esac
+  # Get next input.
+  shift
+done
+
+if [ -z "$CMakeBuildDir" ]; then
+  CMakeBuildDir="$SourceDir/build"
+fi
+
+# Check for `cmake` command.
+if [ -z "$CMakeCommand" ]; then
+  # Prefer cmake3 over "regular" cmake (cmake == cmake2 on RHEL).
+  if command -v cmake3 >/dev/null 2>&1 ; then
+    CMakeCommand="cmake3"
+  elif command -v cmake >/dev/null 2>&1 ; then
+    CMakeCommand="cmake"
+  else
+    echo "This package requires CMake, please install it first."
+    echo "Then you may use this script to configure the CMake build."
+    echo "Note: pass --cmake=PATH to use cmake in non-standard locations."
+    exit 1
+  fi
+fi
+
+# Make sure the build directory is an absolute path.
+case "$CMakeBuildDir" in
+  /*)
+    CMakeAbsoluteBuildDir="$CMakeBuildDir"
+    ;;
+  *)
+    CMakeAbsoluteBuildDir="$SourceDir/$CMakeBuildDir"
+    ;;
+esac
+
+# If a build directory exists, delete any existing cache to have a clean build.
+if [ -d "$CMakeAbsoluteBuildDir" ]; then
+  if [ -f "$CMakeAbsoluteBuildDir/CMakeCache.txt" ]; then
+    rm -f "$CMakeAbsoluteBuildDir/CMakeCache.txt"
+  fi
+else
+  mkdir -p "$CMakeAbsoluteBuildDir"
+fi
+
+# Run CMake.
+cd "$CMakeAbsoluteBuildDir"
+if [ -n "$CMakeGenerator" ]; then
+  "$CMakeCommand" -G "$CMakeGenerator" $CMakeCacheEntries "$SourceDir"
+else
+  "$CMakeCommand" $CMakeCacheEntries "$SourceDir"
+fi
+
+# Generate a config.status file that allows re-running a clean build.
+printf "#!/bin/sh\n\n" > config.status
+printf "# Switch to the source of this build directory.\n" >> config.status
+printf "cd \"%s\"\n\n" "$SourceDir" >> config.status
+printf "# Invoke the command to configure this build.\n" >> config.status
+if [ -n "$CXX" ]; then
+  printf "CXX=\"%s\"\n" "$CXX" >> config.status
+fi
+if [ -n "$CXXFLAGS" ]; then
+  printf "CXXFLAGS=\"%s\"\n" "$CXXFLAGS" >> config.status
+fi
+if [ -n "$LDFLAGS" ]; then
+  printf "LDFLAGS=\"%s\"\n" "$LDFLAGS" >> config.status
+fi
+echo $Command >> config.status
+chmod u+x config.status
