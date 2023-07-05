@@ -36,7 +36,7 @@ TEST(jstring, construct) {
     EXPECT_TRUE(str.is_long_mode());
   }
   {
-    jstring::jstring str{"abcdefghijklmnopqrstuvw"};
+    jstring::jstring str{"This is a small string"};
     EXPECT_FALSE(str.is_long_mode());
   }
   {

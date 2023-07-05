@@ -124,6 +124,32 @@ public:
 
   constexpr operator std::string_view() const noexcept;
 
+  // -- Iterators --------------------------------------------------------------
+
+  iterator begin();
+
+  const_iterator begin() const;
+
+  iterator end();
+
+  const_iterator end() const;
+
+  const_iterator cbegin() const;
+
+  const_iterator cend() const;
+
+  iterator rbegin();
+
+  const_iterator rbegin() const;
+
+  iterator rend();
+
+  const_iterator rend() const;
+
+  const_iterator crbegin() const;
+
+  const_iterator crend() const;
+
   // -- Capacity ---------------------------------------------------------------
 
   bool empty() const;
@@ -138,6 +164,14 @@ public:
 
   void shrink_to_fit();
 
+  // -- Operations -------------------------------------------------------------
+
+  void clear();
+
+  // void insert();
+
+  // void insert_range();
+
   // -- input/output -----------------------------------------------------------
 
   friend std::ostream& operator<<(std::ostream& os, const jstring& str);
@@ -148,12 +182,6 @@ public:
 
 private:
   void reallocate(size_type size, bool retain_content = false);
-
-  void clear() { std::memset(raw_.raw_.data(), 0, sizeof(raw_data)); }
-
-  constexpr long_data& as_long_data() { return long_; }
-
-  constexpr short_data& as_short_data() { return short_; }
 
   union {
     short_data short_;

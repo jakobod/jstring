@@ -17,7 +17,6 @@ jstring::jstring() {
 }
 
 jstring::jstring(const_pointer data, size_type size) {
-  std::cout << "assigning the string" << std::endl;
   assign(data, size);
 }
 
@@ -35,7 +34,6 @@ jstring::~jstring() {
 jstring& jstring::assign(const_pointer ptr, size_type size) {
   const auto is_nullterminated = (ptr[size - 1] == '\0');
   raw_.is_long_ = (size > short_capacity);
-  std::cout << "string is " << (is_long_mode() ? "long" : "short") << std::endl;
 
   if (is_long_mode()) {
     reallocate(size);
@@ -108,6 +106,59 @@ constexpr jstring::operator std::string_view() const noexcept {
   return is_long_mode() ? long_.data_ : short_.data_.data();
 }
 
+// -- Iterators ----------------------------------------------------------------
+
+jstring::iterator jstring::begin() {
+  return is_long_mode() ? long_.data_ : short_.data_.data();
+}
+
+jstring::const_iterator jstring::begin() const {
+  return is_long_mode() ? long_.data_ : short_.data_.data();
+}
+
+jstring::iterator jstring::end() {
+  return is_long_mode() ? long_.data_ + long_.size_
+                        : short_.data_.data() + short_.size_;
+}
+
+jstring::const_iterator jstring::end() const {
+  return is_long_mode() ? long_.data_ + long_.size_
+                        : short_.data_.data() + short_.size_;
+}
+
+jstring::const_iterator jstring::cbegin() const {
+  return is_long_mode() ? long_.data_ : short_.data_.data();
+}
+
+jstring::const_iterator jstring::cend() const {
+  return is_long_mode() ? long_.data_ + long_.size_
+                        : short_.data_.data() + short_.size_;
+}
+
+jstring::iterator jstring::rbegin() {
+  return end();
+}
+
+jstring::const_iterator jstring::rbegin() const {
+  return end();
+}
+
+jstring::iterator jstring::rend() {
+  return begin();
+}
+
+jstring::const_iterator jstring::rend() const {
+  return begin();
+}
+
+jstring::const_iterator jstring::crbegin() const {
+  return end();
+}
+
+jstring::const_iterator jstring::crend() const {
+  return begin();
+}
+
 // -- Capacity -----------------------------------------------------------------
 
 bool jstring::empty() const {
@@ -135,6 +186,16 @@ void jstring::shrink_to_fit() {
   // nop - Currently not supported
 }
 
+// -- Operations ---------------------------------------------------------------
+
+void jstring::clear() {
+  // Free the potentially allocated memory
+  if (is_long_mode() && long_.data_)
+    delete[] long_.data_;
+  // Then zero the objects memory itself
+  std::memset(raw_.raw_.data(), 0, sizeof(raw_data));
+}
+
 // -- input/output -------------------------------------------------------------
 
 std::ostream& operator<<(std::ostream& os, const jstring& str) {
@@ -150,14 +211,16 @@ bool jstring::is_long_mode() const {
 
 // -- private member functions -------------------------------------------------
 
-void jstring::reallocate(size_type required_capacity, bool retain_content) {
+void jstring::reallocate(size_type requested_capacity, bool retain_content) {
   if (!is_long_mode())
     return;
-  required_capacity = std::bit_ceil(required_capacity);
-  auto new_ptr = new value_type[required_capacity];
+  const auto to_allocate = std::bit_ceil(requested_capacity);
+  if (long_.capacity_ >= to_allocate)
+    return;
+  auto new_ptr = new value_type[to_allocate];
   if (!new_ptr)
     throw std::runtime_error("Could not allocate the requested capacity");
-  long_.capacity_ = required_capacity;
+  long_.capacity_ = to_allocate;
   if (retain_content)
     std::memcpy(new_ptr, long_.data_, long_.size_);
   if (long_.data_)
